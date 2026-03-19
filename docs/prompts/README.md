@@ -59,6 +59,7 @@ The V5 workflow is the current standard for function documentation. It was refin
 
 | File | Purpose |
 |------|---------|
+| [CLAUDE_CODE_SKILL.md](CLAUDE_CODE_SKILL.md) | Claude Code `/ghidra` skill — drop-in LLM prompt for Ghidra MCP usage |
 | [TOOL_USAGE_GUIDE.md](TOOL_USAGE_GUIDE.md) | MCP tool reference and usage patterns |
 | [DOCUMENTATION_WORKFLOW_INDEX.md](DOCUMENTATION_WORKFLOW_INDEX.md) | Decision tree for choosing the right workflow |
 | [PROTOTYPE_AUDIT_WORKFLOW.md](PROTOTYPE_AUDIT_WORKFLOW.md) | Function prototype validation workflow |

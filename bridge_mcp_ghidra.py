@@ -15,6 +15,10 @@ import re
 import json
 import inspect
 import threading
+import subprocess
+import socket
+import glob as glob_module
+import atexit
 from urllib.parse import urljoin, urlparse
 from typing import Optional, Any
 
@@ -1049,6 +1053,89 @@ def _register_schema_tools():
     except Exception as e:
         logger.warning(f"Error during schema tool registration: {e}")
         return 0
+
+
+# Headless-specific endpoints not included in /mcp/schema.
+# These are registered as MCP tools only in headless mode.
+HEADLESS_TOOL_DEFS = [
+    {
+        "path": "/load_program",
+        "method": "POST",
+        "description": "Load a binary file into the headless Ghidra server for analysis. "
+                       "This is the first step after connecting — provide the absolute path "
+                       "to the binary on disk. Follow with run_analysis to trigger auto-analysis.",
+        "params": [
+            {"name": "file", "type": "string", "source": "body", "required": True,
+             "description": "Absolute path to the binary file to load"},
+        ],
+    },
+    {
+        "path": "/close_program",
+        "method": "POST",
+        "description": "Close/unload a program from the headless server, freeing its resources.",
+        "params": [
+            {"name": "name", "type": "string", "source": "body", "required": True,
+             "description": "Name of the program to close (as shown by list_open_programs)"},
+        ],
+    },
+    {
+        "path": "/create_project",
+        "method": "POST",
+        "description": "Create a new Ghidra project in the specified directory.",
+        "params": [
+            {"name": "parentDir", "type": "string", "source": "body", "required": True,
+             "description": "Parent directory where the project will be created"},
+            {"name": "name", "type": "string", "source": "body", "required": True,
+             "description": "Name of the new project"},
+        ],
+    },
+    {
+        "path": "/open_project",
+        "method": "POST",
+        "description": "Open an existing Ghidra project (.gpr file or project directory).",
+        "params": [
+            {"name": "path", "type": "string", "source": "body", "required": True,
+             "description": "Path to the Ghidra project (.gpr file or directory)"},
+        ],
+    },
+    {
+        "path": "/close_project",
+        "method": "POST",
+        "description": "Close the currently open Ghidra project.",
+        "params": [],
+    },
+    {
+        "path": "/load_program_from_project",
+        "method": "POST",
+        "description": "Load a program from the currently open Ghidra project.",
+        "params": [
+            {"name": "path", "type": "string", "source": "body", "required": True,
+             "description": "Path to the program within the project"},
+        ],
+    },
+    {
+        "path": "/get_project_info",
+        "method": "GET",
+        "description": "Get information about the currently open Ghidra project.",
+        "params": [],
+    },
+]
+
+
+def _register_headless_tools():
+    """Register headless-specific endpoints as MCP tools."""
+    registered = 0
+    for tool_def in HEADLESS_TOOL_DEFS:
+        path = tool_def["path"]
+        tool_name = path.lstrip("/").replace("/", "_")
+        if tool_name in STATIC_TOOL_NAMES:
+            continue
+        description = tool_def["description"]
+        handler = _make_tool_handler(tool_def)
+        mcp.tool(name=tool_name, description=description)(handler)
+        registered += 1
+    logger.info(f"Registered {registered} headless-specific tools")
+    return registered
 
 
 # ===========================================================================
@@ -2367,6 +2454,121 @@ def export_system_knowledge(
     return "\n".join(lines)
 
 
+# ========== HEADLESS SERVER MANAGEMENT ==========
+
+_headless_process = None
+
+
+def _build_classpath(ghidra_home, mcp_jar):
+    """Build the Java classpath for the headless server."""
+    classpath = [mcp_jar]
+    for sub in ["Framework", "Features", "Processors"]:
+        pattern = os.path.join(ghidra_home, "Ghidra", sub, "*", "lib", "*.jar")
+        classpath.extend(sorted(glob_module.glob(pattern)))
+    return ":".join(classpath)
+
+
+def _find_mcp_jar():
+    """Locate the GhidraMCP jar in the target/ directory next to this script."""
+    script_dir = Path(__file__).parent
+    matches = glob_module.glob(str(script_dir / "target" / "GhidraMCP-*.jar"))
+    return matches[0] if matches else None
+
+
+def _wait_for_port(host, port, timeout=60):
+    """Wait for a TCP port to become available."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=2):
+                return True
+        except (ConnectionRefusedError, OSError):
+            time.sleep(1)
+    return False
+
+
+def start_headless_server(ghidra_home, port=8089, java_opts="-Xmx4g"):
+    """Start the GhidraMCP headless server as a subprocess.
+
+    The server starts without any binary loaded. Use the load_program
+    MCP tool to load a binary for analysis.
+
+    Args:
+        ghidra_home: Path to the Ghidra installation directory.
+        port: Port for the HTTP server (default: 8089).
+        java_opts: JVM options (default: -Xmx4g).
+
+    Returns:
+        The subprocess.Popen object, or None if server was already running.
+
+    Raises:
+        RuntimeError: If MCP jar cannot be found, or server fails to start.
+    """
+    global _headless_process
+
+    # Check if already running
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=2):
+            logger.info(f"Port {port} already in use — headless server already running")
+            return None
+    except (ConnectionRefusedError, OSError):
+        pass
+
+    if not os.path.isdir(ghidra_home):
+        raise RuntimeError(f"Ghidra installation not found: {ghidra_home}")
+
+    mcp_jar = _find_mcp_jar()
+    if not mcp_jar:
+        raise RuntimeError(
+            "Cannot find GhidraMCP jar. Ensure it is built in the target/ directory."
+        )
+
+    classpath = _build_classpath(ghidra_home, mcp_jar)
+
+    cmd = [
+        "java",
+        *java_opts.split(),
+        f"-Dghidra.home={ghidra_home}",
+        "-Dapplication.name=GhidraMCP",
+        "-classpath", classpath,
+        "com.xebyte.headless.GhidraMCPHeadlessServer",
+        "--port", str(port),
+    ]
+
+    logger.info(f"Starting headless server: ghidra_home={ghidra_home}, port={port}")
+    _headless_process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+
+    # Register cleanup
+    atexit.register(_stop_headless_server)
+
+    # Wait for server to come up
+    if not _wait_for_port("127.0.0.1", port, timeout=60):
+        if _headless_process.poll() is not None:
+            output = _headless_process.stdout.read().decode(errors="replace")
+            raise RuntimeError(f"Headless server exited with code {_headless_process.returncode}:\n{output}")
+        raise RuntimeError(f"Headless server did not become available on port {port} within 60s")
+
+    logger.info("Headless server is up")
+    return _headless_process
+
+
+def _stop_headless_server():
+    """Stop the headless server subprocess if we started it."""
+    global _headless_process
+    if _headless_process and _headless_process.poll() is None:
+        logger.info("Stopping headless server...")
+        _headless_process.terminate()
+        try:
+            _headless_process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            _headless_process.kill()
+        _headless_process = None
+
+
 # ========== MAIN ==========
 
 
@@ -2392,15 +2594,39 @@ def main():
         "--profile", type=str, choices=list(TOOL_PROFILES.keys()),
         help="Load only tools for a specific workflow (e.g., 're' for reverse engineering)",
     )
+    parser.add_argument(
+        "--ghidra-home", type=str,
+        help="Path to Ghidra installation — starts a headless server automatically (no GUI needed)",
+    )
+    parser.add_argument(
+        "--java-opts", type=str, default="-Xmx4g",
+        help="JVM options for headless server (default: -Xmx4g)",
+    )
     args = parser.parse_args()
 
     global ghidra_server_url
     if args.ghidra_server:
         ghidra_server_url = args.ghidra_server
 
+    # Start headless server if ghidra-home is provided
+    if args.ghidra_home:
+        parsed = urlparse(ghidra_server_url)
+        port = parsed.port or 8089
+        start_headless_server(
+            ghidra_home=args.ghidra_home,
+            port=port,
+            java_opts=args.java_opts,
+        )
+
     # Dynamic tool registration from Ghidra's /mcp/schema
     dynamic_count = _register_schema_tools()
-    logger.info(f"Total tools: {dynamic_count} dynamic + {len(STATIC_TOOL_NAMES)} static")
+
+    # Register headless-specific tools when running in headless mode
+    headless_count = 0
+    if args.ghidra_home:
+        headless_count = _register_headless_tools()
+
+    logger.info(f"Total tools: {dynamic_count} dynamic + {headless_count} headless + {len(STATIC_TOOL_NAMES)} static")
 
     if args.profile:
         apply_tool_profile(mcp, args.profile)
@@ -2415,7 +2641,8 @@ def main():
             if args.mcp_port:
                 mcp.settings.port = args.mcp_port
             else:
-                mcp.settings.port = 8089
+                # Avoid port conflict when headless server is on the default port
+                mcp.settings.port = 8090 if args.ghidra_home else 8089
             logger.info(f"Connecting to Ghidra server at {ghidra_server_url}")
             logger.info(f"Starting MCP server on http://{mcp.settings.host}:{mcp.settings.port}/sse")
             mcp.run(transport="sse")

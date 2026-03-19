@@ -160,17 +160,36 @@ Most Ghidra MCP implementations give you a handful of read-only tools and call i
 
 ### Basic Usage
 
-#### Option 1: Stdio Transport (Recommended for AI tools)
+#### Option 1: Headless Mode (Recommended — no GUI required)
+
+The bridge launches the headless Ghidra backend when given `--ghidra-home`:
+
+```bash
+python bridge_mcp_ghidra.py --ghidra-home /path/to/ghidra_12.0.3_PUBLIC
+```
+
+This will:
+- Spawn the headless server, wait for it to come up
+- Register all MCP tools and start the bridge
+- Clean up the server on exit
+
+The server starts without a binary loaded. The LLM uses the MCP tools to load and analyze.
+
+No GUI, no manual steps. Optional: `--java-opts "-Xmx8g"` for large binaries.
+
+#### Option 2: Stdio Transport (with external Ghidra backend)
 ```bash
 python bridge_mcp_ghidra.py
 ```
 
-#### Option 2: SSE Transport (Web/HTTP clients)
+Requires a Ghidra backend already running on port 8089 (GUI plugin or standalone headless server).
+
+#### Option 3: SSE Transport (Web/HTTP clients)
 ```bash
 python bridge_mcp_ghidra.py --transport sse --mcp-host 127.0.0.1 --mcp-port 8081
 ```
 
-#### In Ghidra
+#### GUI Backend Setup (for Options 2/3 without headless)
 1. Start Ghidra and open a **CodeBrowser** window
 2. In **CodeBrowser**, enable the plugin via **File > Configure > Configure All Plugins > GhidraMCP**
 3. Optional: configure custom port via **CodeBrowser > Edit > Tool Options > GhidraMCP HTTP Server**
@@ -674,9 +693,19 @@ Then rerun:
 - [Complete Changelog](CHANGELOG.md) - All version release notes
 - [Release Notes](docs/releases/) - Detailed release documentation
 
-## 🐳 Headless Server (Docker)
+## 🐳 Headless Server
 
 GhidraMCP includes a headless server mode for automated analysis without the Ghidra GUI.
+
+### Quick Start via Bridge (Recommended)
+
+The simplest way to use headless mode — the bridge manages the server lifecycle:
+
+```bash
+python bridge_mcp_ghidra.py --ghidra-home /path/to/ghidra_12.0.3_PUBLIC
+```
+
+The bridge spawns the headless server, registers MCP tools, and cleans up on exit. Use `load_program` and `run_analysis` MCP tools to load and analyze binaries. See [Basic Usage](#basic-usage) for details.
 
 ### Quick Start with Docker
 
