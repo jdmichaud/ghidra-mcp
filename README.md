@@ -177,6 +177,14 @@ The server starts without a binary loaded. The LLM uses the MCP tools to load an
 
 No GUI, no manual steps. Optional: `--java-opts "-Xmx8g"` for large binaries.
 
+##### Registering with Claude Code
+
+```bash
+claude mcp add ghidra -- uv run /path/to/ghidra-mcp/bridge_mcp_ghidra.py --ghidra-home /path/to/ghidra_12.0.3_PUBLIC
+```
+
+> The `--` keeps the command and its args separate (don't pass the whole thing as one quoted string). If `claude mcp list` reports `ENOENT: ... 'uv'`, your launch environment doesn't have `uv` on `PATH` — use the absolute path from `which uv` instead.
+
 #### Option 2: Stdio Transport (with external Ghidra backend)
 ```bash
 python bridge_mcp_ghidra.py
