@@ -27,6 +27,7 @@ import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
 import ghidra.program.model.address.AddressSetView;
 import ghidra.program.model.lang.CompilerSpec;
+import ghidra.program.model.lang.CompilerSpecDescription;
 import ghidra.program.model.lang.CompilerSpecID;
 import ghidra.program.model.lang.Language;
 import ghidra.program.model.lang.LanguageID;
@@ -191,19 +192,41 @@ public class HeadlessProgramProvider implements ProgramProvider {
                     language = languageService.getLanguage(new LanguageID(languageId));
                 } catch (Exception e) {
                     throw new IllegalArgumentException(
-                        "Unknown language_id '" + languageId + "'. Use list_language_ids to see " +
-                        "available IDs.", e);
+                        "Unknown language_id '" + languageId + "': " + describeThrowable(e) +
+                        ". Use list_language_ids to see available IDs.", e);
                 }
 
                 CompilerSpec compilerSpec;
                 if (hasCompiler) {
+                    CompilerSpecID csId = new CompilerSpecID(compilerSpecId);
+                    boolean declared = false;
+                    for (CompilerSpecDescription d : language.getCompatibleCompilerSpecDescriptions()) {
+                        if (d.getCompilerSpecID().equals(csId)) {
+                            declared = true;
+                            break;
+                        }
+                    }
                     try {
-                        compilerSpec = language.getCompilerSpecByID(new CompilerSpecID(compilerSpecId));
+                        compilerSpec = language.getCompilerSpecByID(csId);
                     } catch (Exception e) {
+                        // getCompilerSpecByID both resolves the ID *and* builds the spec
+                        // from its .cspec XML. A malformed .cspec surfaces here (even as a
+                        // CompilerSpecNotFoundException) with the real parse error — e.g.
+                        // "...(x86watcom.cspec:323): Missing prototype model: __cdecl".
+                        // list_language_ids only parses the .ldefs, so it still lists the
+                        // id; distinguish the two cases so the caller knows which to fix.
+                        if (declared) {
+                            throw new IllegalArgumentException(
+                                "compiler_spec_id '" + compilerSpecId + "' is declared for language '" +
+                                languageId + "' but its compiler spec (.cspec) failed to load: " +
+                                describeThrowable(e) + ". The id appears in list_language_ids (which " +
+                                "only reads the .ldefs) — fix the .cspec file and re-run " +
+                                "restart_headless_server.", e);
+                        }
                         throw new IllegalArgumentException(
                             "Unknown compiler_spec_id '" + compilerSpecId + "' for language '" +
-                            languageId + "'. Use list_language_ids to see each language's compiler " +
-                            "specs.", e);
+                            languageId + "': " + describeThrowable(e) +
+                            ". Use list_language_ids to see each language's compiler specs.", e);
                     }
                 } else {
                     compilerSpec = language.getDefaultCompilerSpec();
@@ -258,6 +281,32 @@ public class HeadlessProgramProvider implements ProgramProvider {
             Msg.error(this, "Error loading program from file: " + file.getAbsolutePath(), e);
             return null;
         }
+    }
+
+    /**
+     * Render an exception chain as a compact single-line string
+     * ("Type: message; caused by: Type: message"), so the underlying reason
+     * (e.g. a .cspec XML parse error with file:line) reaches the JSON response
+     * instead of being swallowed. Depth-capped to guard against cyclic causes.
+     */
+    private static String describeThrowable(Throwable t) {
+        StringBuilder sb = new StringBuilder();
+        Throwable c = t;
+        for (int depth = 0; c != null && depth < 8; depth++) {
+            if (sb.length() > 0) {
+                sb.append("; caused by: ");
+            }
+            sb.append(c.getClass().getSimpleName());
+            if (c.getMessage() != null) {
+                sb.append(": ").append(c.getMessage());
+            }
+            Throwable next = c.getCause();
+            if (next == c) {
+                break;
+            }
+            c = next;
+        }
+        return sb.toString();
     }
 
     /**

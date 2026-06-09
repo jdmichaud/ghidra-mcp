@@ -2486,6 +2486,10 @@ _headless_process = None
 # Startup parameters recorded by main() so restart_headless_server can respawn
 # the backend with the same configuration.
 _headless_config = None
+# Path to the file the headless JVM's stdout/stderr is redirected to. Lets the
+# server's own logs (incl. Ghidra Msg.error output such as .cspec parse errors)
+# be inspected, and avoids a pipe-buffer deadlock from an undrained PIPE.
+_headless_log_path = None
 
 
 def _build_classpath(ghidra_home, mcp_jar):
@@ -2564,10 +2568,20 @@ def start_headless_server(ghidra_home, port=8089, java_opts="-Xmx4g"):
         "--port", str(port),
     ]
 
+    # Redirect the JVM's stdout+stderr to a log file rather than a PIPE. This
+    # (a) surfaces Ghidra's own diagnostics — e.g. .cspec/.ldefs parse errors
+    # logged via Msg.error — for inspection, and (b) avoids a deadlock where an
+    # undrained PIPE buffer fills and blocks the JVM. Truncated on each start so
+    # it reflects the current backend (relevant after restart_headless_server).
+    global _headless_log_path
+    _headless_log_path = str(Path(__file__).parent / "headless_server.log")
+
     logger.info(f"Starting headless server: ghidra_home={ghidra_home}, port={port}")
+    logger.info(f"Headless server log: {_headless_log_path}")
+    log_file = open(_headless_log_path, "w")
     _headless_process = subprocess.Popen(
         cmd,
-        stdout=subprocess.PIPE,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
     )
 
@@ -2577,8 +2591,13 @@ def start_headless_server(ghidra_home, port=8089, java_opts="-Xmx4g"):
     # Wait for server to come up
     if not _wait_for_port("127.0.0.1", port, timeout=60):
         if _headless_process.poll() is not None:
-            output = _headless_process.stdout.read().decode(errors="replace")
-            raise RuntimeError(f"Headless server exited with code {_headless_process.returncode}:\n{output}")
+            try:
+                output = Path(_headless_log_path).read_text(errors="replace")
+            except OSError:
+                output = "(could not read headless log)"
+            raise RuntimeError(
+                f"Headless server exited with code {_headless_process.returncode}. "
+                f"See {_headless_log_path}:\n{output}")
         raise RuntimeError(f"Headless server did not become available on port {port} within 60s")
 
     logger.info("Headless server is up")
@@ -2654,7 +2673,8 @@ def restart_headless_server(java_opts: str = None) -> str:
         return f"Error: failed to restart headless server: {e}"
     return (
         f"Headless server restarted on port {port}; language definitions re-scanned. "
-        "Re-open or re-import programs before continuing."
+        "Re-open or re-import programs before continuing. "
+        f"Backend logs (incl. any .cspec/.ldefs parse errors): {_headless_log_path}"
     )
 
 

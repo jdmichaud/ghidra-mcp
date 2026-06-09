@@ -307,14 +307,33 @@ Rules:
 - `compiler_spec_id` requires `language_id` (a compiler spec lives inside a language).
 - Omit `compiler_spec_id` to use the language's default compiler spec.
 - An **unknown** `language_id` or `compiler_spec_id` returns a descriptive `error`
-  (e.g. `Unknown compiler_spec_id 'watcom' for language 'x86:LE:32:default'`) and does
+  (e.g. `Unknown compiler_spec_id 'foo' for language 'x86:LE:32:default'`) and does
   **NOT** silently fall back to auto-detection. Call `list_language_ids` to find the
   correct value and retry.
 - The success response echoes the `language`/`compiler_spec` actually applied — check
   it to confirm the override took effect (e.g. that a 32-bit spec wasn't auto-upgraded).
 
-If the compiler spec you need is **not listed** by `list_language_ids`, it isn't
-installed yet — see the custom-cspec workflow below.
+**"Declared but failed to load" — a custom `.cspec` that lists but won't build.**
+`list_language_ids` only reads the `.ldefs`, so a malformed `.cspec` still appears in
+the list yet fails when `load_program` tries to *build* it. In that case the error is
+explicit, e.g.:
+
+```
+compiler_spec_id 'watcom' is declared for language 'x86:LE:32:default' but its
+compiler spec (.cspec) failed to load: CompilerSpecNotFoundException: Exception
+reading x86:LE:32:default/watcom(x86watcom.cspec:323): Missing prototype model:
+__cdecl ... fix the .cspec file and re-run restart_headless_server.
+```
+
+The message carries the **file, line, and reason** — fix that line in the `.cspec`
+(here: define or stop referencing the `__cdecl` prototype model), then
+`restart_headless_server` and retry. Every prototype model referenced anywhere in a
+`.cspec` (e.g. in `<default_proto>`, `<resolveprototype>`, callfixups) must also be
+**defined** in that same `.cspec`. Full backend logs are at the path reported by
+`restart_headless_server` (`<repo>/headless_server.log`).
+
+If the compiler spec you need is **not listed at all** by `list_language_ids`, it
+isn't installed yet — see the custom-cspec workflow below.
 
 ## Headless Backend Restart & Custom Compiler Specs (v4.3+)
 

@@ -169,6 +169,14 @@ mcp__ghidra__load_program(file="/path/bin.exe",
 No `setLanguage` scripting is needed — once the spec is installed and the backend
 restarted, `load_program` applies it directly via `compiler_spec_id`.
 
+**If the spec lists but `load_program` rejects it:** `list_language_ids` reads only the
+`.ldefs`, so a malformed `.cspec` still shows up but fails to *build*. The `load_program`
+error then names the file, line, and reason, e.g. `...(x86watcom.cspec:323): Missing
+prototype model: __cdecl`. Every prototype model referenced in a `.cspec` must also be
+defined in it. Fix the file, `restart_headless_server`, retry. Full backend output
+(Ghidra's own parse errors) is in `<repo>/headless_server.log` — the path is reported by
+`restart_headless_server`.
+
 For a single function with an unusual calling convention, prefer custom variable
 storage on the prototype (`set_function_prototype`) instead — no cspec or restart
 needed.

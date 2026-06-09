@@ -11,6 +11,11 @@ Complete version history for the Ghidra MCP Server project.
 - `load_program` now accepts optional `language_id` and `compiler_spec_id` parameters to override Ghidra's auto-detection — e.g. force a Watcom DOS/PE binary onto the `watcom` compiler spec instead of the auto-guessed convention. Implemented via `AutoImporter.importByLookingForLcs`. The success response now reports the `language` and `compiler_spec` actually used.
 - Unknown IDs return a descriptive error (listing what was requested) instead of silently falling back to auto-detection; `compiler_spec_id` requires `language_id`.
 - New `list_language_ids` endpoint/tool: enumerates every Ghidra language ID with its compatible compiler spec IDs, with an optional case-insensitive `filter`. This is the discovery tool for the `load_program` override values (and confirms a custom `.cspec`/`.ldefs` is visible after a restart).
+- `load_program` errors now surface the underlying exception chain. A `compiler_spec_id` that is *declared* in the `.ldefs` but whose `.cspec` fails to build (e.g. `Missing prototype model: __cdecl` at `x86watcom.cspec:323`) is reported distinctly from a truly unknown id, including the offending file, line, and reason — `list_language_ids` only parses the `.ldefs` so it cannot detect this on its own.
+
+### Headless Backend Logging
+
+- The headless JVM's stdout/stderr is now redirected to `<repo>/headless_server.log` (truncated on each start) instead of an undrained `PIPE`. This exposes Ghidra's own diagnostics — including `.cspec`/`.ldefs` parse errors logged via `Msg.error` — and removes a latent deadlock where a full pipe buffer could block the backend. `restart_headless_server` reports the log path in its response.
 
 ### Headless Backend Restart Tool
 
