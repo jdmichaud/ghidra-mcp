@@ -1,7 +1,7 @@
 {
   "version": "4.3.0",
   "description": "GhidraMCP REST API Endpoint Specification",
-  "total_endpoints": 191,
+  "total_endpoints": 192,
   "categories": {
     "listing": "List program data",
     "getter": "Get specific data",
@@ -1463,9 +1463,20 @@
       "method": "POST",
       "category": "program",
       "params": [
-        "path"
+        "file",
+        "language_id",
+        "compiler_spec_id"
       ],
-      "description": "Load program into headless server"
+      "description": "Load program into headless server (optional explicit language_id/compiler_spec_id override auto-detection)"
+    },
+    {
+      "path": "/list_language_ids",
+      "method": "GET",
+      "category": "program",
+      "params": [
+        "filter"
+      ],
+      "description": "List available Ghidra language IDs and their compatible compiler spec IDs"
     },
     {
       "path": "/load_program_from_project",

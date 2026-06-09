@@ -346,6 +346,10 @@ public class HeadlessEndpointHandler {
     // ==========================================================================
 
     public String loadProgram(String filePath) {
+        return loadProgram(filePath, null, null);
+    }
+
+    public String loadProgram(String filePath, String languageId, String compilerSpecId) {
         if (filePath == null || filePath.isEmpty()) {
             return "{\"error\": \"File path required\"}";
         }
@@ -357,16 +361,69 @@ public class HeadlessEndpointHandler {
 
         if (programProvider instanceof HeadlessProgramProvider) {
             HeadlessProgramProvider hpp = (HeadlessProgramProvider) programProvider;
-            Program program = hpp.loadProgramFromFile(file);
+            Program program;
+            try {
+                program = hpp.loadProgramFromFile(file, languageId, compilerSpecId);
+            } catch (IllegalArgumentException e) {
+                // Bad language/compiler spec ID — return the descriptive message
+                // rather than silently auto-detecting.
+                return "{\"error\": \"" + escapeJson(e.getMessage()) + "\"}";
+            }
 
             if (program != null) {
-                return "{\"success\": true, \"program\": \"" + escapeJson(program.getName()) + "\"}";
+                return "{\"success\": true, \"program\": \"" + escapeJson(program.getName()) +
+                    "\", \"language\": \"" + escapeJson(program.getLanguageID().getIdAsString()) +
+                    "\", \"compiler_spec\": \"" +
+                    escapeJson(program.getCompilerSpec().getCompilerSpecID().getIdAsString()) + "\"}";
             } else {
                 return "{\"error\": \"Failed to load program from: " + escapeJson(filePath) + "\"}";
             }
         }
 
         return "{\"error\": \"Load not supported in this mode\"}";
+    }
+
+    /**
+     * List every language ID Ghidra knows about, each with its compatible
+     * compiler spec IDs. Used to discover valid values for the language_id /
+     * compiler_spec_id parameters of load_program (e.g. after installing a
+     * custom .cspec / .ldefs entry and restarting the backend).
+     */
+    public String listLanguageIds(String filter) {
+        ghidra.program.model.lang.LanguageService languageService =
+            ghidra.program.util.DefaultLanguageService.getLanguageService();
+        String needle = (filter == null) ? null : filter.toLowerCase();
+
+        StringBuilder sb = new StringBuilder();
+        sb.append("{\"languages\": [");
+        boolean firstLang = true;
+        for (ghidra.program.model.lang.LanguageDescription ld :
+                languageService.getLanguageDescriptions(false)) {
+            String id = ld.getLanguageID().getIdAsString();
+            if (needle != null && !id.toLowerCase().contains(needle) &&
+                    !ld.getDescription().toLowerCase().contains(needle)) {
+                continue;
+            }
+            if (!firstLang) {
+                sb.append(",");
+            }
+            firstLang = false;
+            sb.append("{\"language_id\": \"").append(escapeJson(id)).append("\"");
+            sb.append(", \"description\": \"").append(escapeJson(ld.getDescription())).append("\"");
+            sb.append(", \"compiler_spec_ids\": [");
+            boolean firstCs = true;
+            for (ghidra.program.model.lang.CompilerSpecDescription cs :
+                    ld.getCompatibleCompilerSpecDescriptions()) {
+                if (!firstCs) {
+                    sb.append(",");
+                }
+                firstCs = false;
+                sb.append("\"").append(escapeJson(cs.getCompilerSpecID().getIdAsString())).append("\"");
+            }
+            sb.append("]}");
+        }
+        sb.append("]}");
+        return sb.toString();
     }
 
     public String closeProgram(String name) {

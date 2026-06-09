@@ -26,7 +26,13 @@ import ghidra.framework.model.DomainFolder;
 import ghidra.framework.model.Project;
 import ghidra.framework.model.ProjectData;
 import ghidra.program.model.address.AddressSetView;
+import ghidra.program.model.lang.CompilerSpec;
+import ghidra.program.model.lang.CompilerSpecID;
+import ghidra.program.model.lang.Language;
+import ghidra.program.model.lang.LanguageID;
+import ghidra.program.model.lang.LanguageService;
 import ghidra.program.model.listing.Program;
+import ghidra.program.util.DefaultLanguageService;
 import ghidra.util.Msg;
 import ghidra.util.task.ConsoleTaskMonitor;
 import ghidra.util.task.TaskMonitor;
@@ -119,27 +125,112 @@ public class HeadlessProgramProvider implements ProgramProvider {
     }
 
     /**
-     * Load a program from a binary file.
+     * Load a program from a binary file, letting Ghidra auto-detect the
+     * language and compiler spec.
      *
      * @param file The binary file to import
      * @return The loaded Program, or null on failure
      */
     public Program loadProgramFromFile(File file) {
+        try {
+            return loadProgramFromFile(file, null, null);
+        } catch (IllegalArgumentException e) {
+            // Cannot happen with null IDs (auto-detect), but keep the
+            // null-on-failure contract of this overload.
+            Msg.error(this, "Error loading program from file: " + file.getAbsolutePath(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Load a program from a binary file with an optional explicit language
+     * and/or compiler spec.
+     *
+     * <p>When both {@code languageId} and {@code compilerSpecId} are null the
+     * import uses Ghidra's best-guess auto-detection (identical to the
+     * single-argument overload). When a language is supplied, the binary is
+     * imported with that language and compiler spec instead of the detected
+     * one — this is how you load, e.g., a Watcom-compiled DOS/PE binary as
+     * {@code x86:LE:32:default} / {@code watcom} when auto-detection would
+     * pick the wrong compiler convention.
+     *
+     * @param file           The binary file to import
+     * @param languageId     Ghidra language ID (e.g. "x86:LE:32:default"), or
+     *                       null to auto-detect. Required if compilerSpecId is set.
+     * @param compilerSpecId Compiler spec ID within that language (e.g.
+     *                       "watcom", "gcc", "windows"), or null for the
+     *                       language's default compiler spec.
+     * @return The loaded Program, or null on failure
+     * @throws IllegalArgumentException if an ID is supplied but unknown, or if
+     *                       compilerSpecId is given without languageId — the
+     *                       message lists what was requested so the caller can
+     *                       correct it rather than silently falling back.
+     */
+    public Program loadProgramFromFile(File file, String languageId, String compilerSpecId) {
         if (!file.exists()) {
             Msg.error(this, "File not found: " + file.getAbsolutePath());
             return null;
         }
 
+        boolean hasLanguage = languageId != null && !languageId.isBlank();
+        boolean hasCompiler = compilerSpecId != null && !compilerSpecId.isBlank();
+        if (hasCompiler && !hasLanguage) {
+            throw new IllegalArgumentException(
+                "compiler_spec_id ('" + compilerSpecId + "') requires language_id to be set " +
+                "(a compiler spec is defined within a language)");
+        }
+
         try {
             MessageLog log = new MessageLog();
-            LoadResults<Program> loadResults = AutoImporter.importByUsingBestGuess(
-                file,
-                null,  // project (null for standalone)
-                "/",   // folder path
-                this,  // consumer
-                log,
-                monitor
-            );
+            LoadResults<Program> loadResults;
+
+            if (hasLanguage) {
+                LanguageService languageService = DefaultLanguageService.getLanguageService();
+                Language language;
+                try {
+                    language = languageService.getLanguage(new LanguageID(languageId));
+                } catch (Exception e) {
+                    throw new IllegalArgumentException(
+                        "Unknown language_id '" + languageId + "'. Use list_language_ids to see " +
+                        "available IDs.", e);
+                }
+
+                CompilerSpec compilerSpec;
+                if (hasCompiler) {
+                    try {
+                        compilerSpec = language.getCompilerSpecByID(new CompilerSpecID(compilerSpecId));
+                    } catch (Exception e) {
+                        throw new IllegalArgumentException(
+                            "Unknown compiler_spec_id '" + compilerSpecId + "' for language '" +
+                            languageId + "'. Use list_language_ids to see each language's compiler " +
+                            "specs.", e);
+                    }
+                } else {
+                    compilerSpec = language.getDefaultCompilerSpec();
+                }
+
+                Msg.info(this, "Importing with explicit language=" + languageId +
+                    ", compilerSpec=" + compilerSpec.getCompilerSpecID());
+                loadResults = AutoImporter.importByLookingForLcs(
+                    file,
+                    null,  // project (null for standalone)
+                    "/",   // folder path
+                    language,
+                    compilerSpec,
+                    this,  // consumer
+                    log,
+                    monitor
+                );
+            } else {
+                loadResults = AutoImporter.importByUsingBestGuess(
+                    file,
+                    null,  // project (null for standalone)
+                    "/",   // folder path
+                    this,  // consumer
+                    log,
+                    monitor
+                );
+            }
 
             Program program = null;
             if (loadResults != null) {
@@ -161,6 +252,8 @@ public class HeadlessProgramProvider implements ProgramProvider {
             }
 
             return program;
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
             Msg.error(this, "Error loading program from file: " + file.getAbsolutePath(), e);
             return null;

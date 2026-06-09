@@ -6,12 +6,22 @@ Complete version history for the Ghidra MCP Server project.
 
 ## Unreleased
 
+### Explicit Language / Compiler Spec at Load Time
+
+- `load_program` now accepts optional `language_id` and `compiler_spec_id` parameters to override Ghidra's auto-detection — e.g. force a Watcom DOS/PE binary onto the `watcom` compiler spec instead of the auto-guessed convention. Implemented via `AutoImporter.importByLookingForLcs`. The success response now reports the `language` and `compiler_spec` actually used.
+- Unknown IDs return a descriptive error (listing what was requested) instead of silently falling back to auto-detection; `compiler_spec_id` requires `language_id`.
+- New `list_language_ids` endpoint/tool: enumerates every Ghidra language ID with its compatible compiler spec IDs, with an optional case-insensitive `filter`. This is the discovery tool for the `load_program` override values (and confirms a custom `.cspec`/`.ldefs` is visible after a restart).
+
 ### Headless Backend Restart Tool
 
 - New bridge-only MCP tool `restart_headless_server`: restarts the bridge-managed headless Ghidra JVM, forcing a re-scan of language definitions on startup. Enables workflows that install custom compiler specs (`.cspec`), processor specs (`.pspec`), or `.ldefs` entries and then use them without manual intervention. Accepts an optional `java_opts` override (e.g., `-Xmx8g`).
 - Only available when the bridge launched the backend itself (`--ghidra-home`); refuses to touch an externally started server.
 - Bridge records headless startup parameters (`_headless_config`) and waits for the port to free between stop and start to avoid false "already running" detection.
-- Tool count: 193 → 194 (23 static + ~170 dynamic).
+
+### Combined workflow
+
+- Custom compiler spec, end to end: write the `.cspec` + `.ldefs` entry (e.g. via `run_script_inline`) → `restart_headless_server` → `list_language_ids` to confirm → `load_program(..., compiler_spec_id=...)`. No `setLanguage` scripting required.
+- Tool count: 193 → 195 (23 static + ~172 headless/dynamic). HTTP endpoints: +1 (`list_language_ids`).
 
 ---
 

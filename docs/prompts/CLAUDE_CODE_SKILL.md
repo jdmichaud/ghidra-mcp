@@ -117,28 +117,61 @@ mcp__ghidra__get_current_program_info(program="...")
 mcp__ghidra__save_program(program="...")
 ```
 
+### Choosing a language / compiler spec at load time
+
+`load_program` auto-detects the language and compiler spec, which sometimes picks
+the wrong **compiler convention** (e.g. a Watcom DOS/PE binary detected as a generic
+x86). To override it, pass `language_id` and (optionally) `compiler_spec_id`:
+
+```
+# Discover valid IDs (filter is an optional case-insensitive substring):
+mcp__ghidra__list_language_ids(filter="x86")
+# -> [{ "language_id": "x86:LE:32:default",
+#       "compiler_spec_ids": ["windows","gcc","borlandcpp","watcom",...] }, ...]
+
+# Load with an explicit language + compiler spec instead of auto-detection:
+mcp__ghidra__load_program(file="/path/bin.exe",
+                          language_id="x86:LE:32:default",
+                          compiler_spec_id="watcom")
+# -> {"success": true, "program": "bin.exe",
+#     "language": "x86:LE:32:default", "compiler_spec": "watcom"}
+```
+
+Rules: `compiler_spec_id` requires `language_id`; omit `compiler_spec_id` for the
+language's default spec. An unknown ID returns a clear `error` (it does NOT silently
+fall back to auto-detect) — call `list_language_ids` to find the right value. The
+success response always reports the `language`/`compiler_spec` actually used, so you
+can confirm the override took effect.
+
 ### Custom Compiler Specs (.cspec) — headless mode only
 
-Ghidra only scans language definitions (`.ldefs`/`.cspec`/`.pspec`) at JVM startup,
-so using a custom compiler spec requires a backend restart. Full workflow:
+If the compiler spec you need is not in `list_language_ids` (e.g. a hand-written
+convention), install a custom `.cspec` first. Ghidra only scans language definitions
+(`.ldefs`/`.cspec`/`.pspec`) at JVM **startup**, so this requires a backend restart:
 
 ```
 # 1. Write the .cspec into a scanned location and reference it from the .ldefs:
 #    <ghidra_home>/Ghidra/Processors/<P>/data/languages/custom.cspec
-#    Add a <compiler> entry to the .ldefs in the same directory.
-#    Use run_script_inline (Java in the backend JVM) for the file writes.
+#    Add a <compiler name="..." spec="custom.cspec" id="mycspec"/> entry to the
+#    .ldefs in the same directory. Use run_script_inline (Java in the backend JVM)
+#    for the file writes.
 
 # 2. Restart the backend so Ghidra re-scans language definitions:
 mcp__ghidra__restart_headless_server()
 
-# 3. Re-load the binary and apply the new language/compiler spec ID:
-mcp__ghidra__load_program(file="/path/to/binary.exe")
-#    Then set the language via run_script_inline:
-#    program.setLanguage(language, new CompilerSpecID("mycspec"), false, monitor)
+# 3. Confirm the new spec is now visible, then load with it directly:
+mcp__ghidra__list_language_ids(filter="mycspec")   # should now list it
+mcp__ghidra__load_program(file="/path/bin.exe",
+                          language_id="x86:LE:32:default",
+                          compiler_spec_id="mycspec")
 ```
 
+No `setLanguage` scripting is needed — once the spec is installed and the backend
+restarted, `load_program` applies it directly via `compiler_spec_id`.
+
 For a single function with an unusual calling convention, prefer custom variable
-storage on the prototype instead — no cspec or restart needed.
+storage on the prototype (`set_function_prototype`) instead — no cspec or restart
+needed.
 
 ### Curl Fallback
 

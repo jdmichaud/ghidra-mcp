@@ -7,13 +7,13 @@
 
 > If you find this useful, please ⭐ star the repo — it helps others discover it!
 
-A production-ready Model Context Protocol (MCP) server that bridges Ghidra's powerful reverse engineering capabilities with modern AI tools and automation frameworks. **194 MCP tools**, battle-tested AI workflows, and the most comprehensive Ghidra-MCP integration available.
+A production-ready Model Context Protocol (MCP) server that bridges Ghidra's powerful reverse engineering capabilities with modern AI tools and automation frameworks. **195 MCP tools**, battle-tested AI workflows, and the most comprehensive Ghidra-MCP integration available.
 
 ## Why Ghidra MCP?
 
 Most Ghidra MCP implementations give you a handful of read-only tools and call it a day. This project is different — it was built by a reverse engineer who uses it daily on real binaries, not as a demo.
 
-- **194 MCP tools** — 3x more than any competing implementation. Not just read operations — full write access for renaming, typing, commenting, structure creation, and script execution.
+- **195 MCP tools** — 3x more than any competing implementation. Not just read operations — full write access for renaming, typing, commenting, structure creation, and script execution.
 - **Battle-tested AI workflows** — Proven documentation workflows (V5) refined across hundreds of functions. Includes step-by-step prompts, Hungarian notation reference, batch processing guides, and orphaned code discovery.
 - **Production-grade reliability** — Atomic transactions, batch operations (93% API call reduction), configurable timeouts, and graceful error handling. No silent failures.
 - **Cross-binary documentation transfer** — SHA-256 function hash matching propagates documentation across binary versions automatically. Document once, apply everywhere.
@@ -24,7 +24,7 @@ Most Ghidra MCP implementations give you a handful of read-only tools and call i
 
 ### Core MCP Integration
 - **Full MCP Compatibility** — Complete implementation of Model Context Protocol
-- **194 MCP Tools** — Comprehensive API surface covering every aspect of binary analysis
+- **195 MCP Tools** — Comprehensive API surface covering every aspect of binary analysis
 - **Production-Ready Reliability** — Atomic transactions, batch operations, configurable timeouts
 - **Real-time Analysis** — Live integration with Ghidra's analysis engine
 
@@ -517,7 +517,11 @@ curl http://127.0.0.1:8089/get_version
 - `get_ordinal_mapping` - Look up known ordinal name by binary, version, ordinal
 - `export_system_knowledge` - Export documented functions as markdown by game system
 
-### Headless Backend Lifecycle (bridge-only, headless mode)
+### Headless Backend Lifecycle (headless mode)
+- `load_program` - Load a binary for analysis. Auto-detects language/compiler by default; pass `language_id` (+ optional `compiler_spec_id`) to override the detection (e.g. force a Watcom binary onto the `watcom` compiler spec). Returns the actual `language`/`compiler_spec` used.
+- `list_language_ids` - List all Ghidra language IDs and their compatible compiler spec IDs (optional `filter`). Use it to discover valid `load_program` override values.
+- `run_analysis` - Trigger auto-analysis after loading
+- `close_program` - Unload a program
 - `restart_headless_server` - Restart the bridge-managed headless Ghidra JVM (re-scans language definitions — use after installing a custom `.cspec`/`.pspec`/`.ldefs`; closes all open programs)
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
@@ -537,7 +541,7 @@ See [CHANGELOG.md](CHANGELOG.md) for version history.
 
 ### Components
 
-- **bridge_mcp_ghidra.py** — Python MCP server that translates MCP protocol to HTTP calls (194 tools)
+- **bridge_mcp_ghidra.py** — Python MCP server that translates MCP protocol to HTTP calls (195 tools)
 - **GhidraMCP.jar** — Ghidra plugin that exposes analysis capabilities via HTTP (176 GUI endpoints)
 - **GhidraMCPHeadlessServer** — Standalone headless server — 184 endpoints, no GUI required
 - **ghidra_scripts/** — Collection of automation scripts for common tasks
@@ -602,7 +606,7 @@ Quick examples:
 ### Project Structure
 ```
 ghidra-mcp/
-├── bridge_mcp_ghidra.py     # MCP server (Python, 194 tools)
+├── bridge_mcp_ghidra.py     # MCP server (Python, 195 tools)
 ├── src/main/java/           # Ghidra plugin + headless server (Java)
 │   └── com/xebyte/
 │       ├── GhidraMCPPlugin.java         # GUI plugin (176 endpoints)
@@ -754,7 +758,8 @@ curl http://localhost:8089/get_metadata
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/load_program` | POST | Load binary file for analysis |
+| `/load_program` | POST | Load binary file for analysis (optional `language_id`/`compiler_spec_id` override) |
+| `/list_language_ids` | GET | List language IDs + compiler spec IDs (for the `load_program` override) |
 | `/run_analysis` | POST | Run Ghidra auto-analysis |
 | `/list_functions` | GET | List all discovered functions |
 | `/list_exports` | GET | List exported symbols |
@@ -795,7 +800,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 | Metric | Value |
 |--------|-------|
 | **Version** | 4.3.0 |
-| **MCP Tools** | 194 fully implemented |
+| **MCP Tools** | 195 fully implemented |
 | **GUI Endpoints** | 175 (GhidraMCPPlugin) |
 | **Headless Endpoints** | 183 (GhidraMCPHeadlessServer) |
 | **Compilation** | ✅ 100% success |

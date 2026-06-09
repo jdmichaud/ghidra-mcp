@@ -1065,10 +1065,34 @@ HEADLESS_TOOL_DEFS = [
         "method": "POST",
         "description": "Load a binary file into the headless Ghidra server for analysis. "
                        "This is the first step after connecting — provide the absolute path "
-                       "to the binary on disk. Follow with run_analysis to trigger auto-analysis.",
+                       "to the binary on disk. Follow with run_analysis to trigger auto-analysis. "
+                       "By default Ghidra auto-detects the language and compiler spec. To override "
+                       "that detection (e.g. force a Watcom DOS/PE binary to use the 'watcom' "
+                       "compiler convention), pass language_id and optionally compiler_spec_id — "
+                       "use list_language_ids to discover valid values. On success the response "
+                       "includes the actual 'language' and 'compiler_spec' the program was loaded with.",
         "params": [
             {"name": "file", "type": "string", "source": "body", "required": True,
              "description": "Absolute path to the binary file to load"},
+            {"name": "language_id", "type": "string", "source": "body", "required": False,
+             "description": "Optional Ghidra language ID to force (e.g. 'x86:LE:32:default'). "
+                            "Omit to auto-detect. See list_language_ids."},
+            {"name": "compiler_spec_id", "type": "string", "source": "body", "required": False,
+             "description": "Optional compiler spec ID within that language (e.g. 'watcom', 'gcc', "
+                            "'windows'). Requires language_id. Omit for the language's default spec."},
+        ],
+    },
+    {
+        "path": "/list_language_ids",
+        "method": "GET",
+        "description": "List every language ID Ghidra knows about, each with its compatible "
+                       "compiler spec IDs. Use this to find valid language_id / compiler_spec_id "
+                       "values for load_program — for example after installing a custom .cspec / "
+                       ".ldefs entry and restarting the backend with restart_headless_server.",
+        "params": [
+            {"name": "filter", "type": "string", "source": "query", "required": False,
+             "description": "Optional case-insensitive substring to match against language ID or "
+                            "description (e.g. 'x86', 'watcom', 'ARM'). Omit to list all."},
         ],
     },
     {

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Ghidra MCP is a production-ready Model Context Protocol (MCP) server that bridges Ghidra's reverse engineering capabilities with AI tools. It provides **194 MCP tools** for binary analysis automation.
+Ghidra MCP is a production-ready Model Context Protocol (MCP) server that bridges Ghidra's reverse engineering capabilities with AI tools. It provides **195 MCP tools** for binary analysis automation.
 
 - **Package**: `com.xebyte`
 - **Version**: 4.3.0 (see `pom.xml`)
@@ -97,7 +97,7 @@ ghidra-mcp/
 
 ## Key Documentation
 
-- **API Reference**: See README.md for complete tool listing (194 MCP tools)
+- **API Reference**: See README.md for complete tool listing (195 MCP tools)
 - **Workflow Prompts**: `docs/prompts/FUNCTION_DOC_WORKFLOW_V5.md` - Function documentation workflow (V5)
 - **Batch Processing**: `docs/prompts/FUNCTION_DOC_WORKFLOW_V5_BATCH.md` - Multi-function parallel documentation
 - **Data Analysis**: `docs/prompts/DATA_TYPE_INVESTIGATION_WORKFLOW.md`

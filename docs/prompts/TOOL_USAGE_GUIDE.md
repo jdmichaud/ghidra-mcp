@@ -277,6 +277,45 @@ The hash algorithm normalizes position-dependent values so identical functions a
 | Large immediates | `IMM_LARGE` | May be addresses |
 | Registers | Preserved | Part of algorithm logic |
 
+## Choosing a Language / Compiler Spec at Load Time (v4.3+)
+
+`load_program` auto-detects the language and compiler spec. When that detection picks
+the wrong **compiler convention** (a common problem with Watcom, Borland, or other
+non-default toolchains), override it explicitly:
+
+```python
+# 1. Discover valid IDs. filter is an optional case-insensitive substring.
+list_language_ids(filter="x86")
+# -> {"languages": [
+#      {"language_id": "x86:LE:32:default",
+#       "description": "...",
+#       "compiler_spec_ids": ["windows","gcc","borlandcpp","watcom","golang", ...]},
+#      ...]}
+
+# 2. Load with explicit language (+ optional compiler spec) instead of auto-detect.
+load_program(file="/path/to/binary.exe",
+             language_id="x86:LE:32:default",
+             compiler_spec_id="watcom")
+# -> {"success": true, "program": "binary.exe",
+#     "language": "x86:LE:32:default", "compiler_spec": "watcom"}
+
+run_analysis(program="binary.exe")
+```
+
+Rules:
+
+- `compiler_spec_id` requires `language_id` (a compiler spec lives inside a language).
+- Omit `compiler_spec_id` to use the language's default compiler spec.
+- An **unknown** `language_id` or `compiler_spec_id` returns a descriptive `error`
+  (e.g. `Unknown compiler_spec_id 'watcom' for language 'x86:LE:32:default'`) and does
+  **NOT** silently fall back to auto-detection. Call `list_language_ids` to find the
+  correct value and retry.
+- The success response echoes the `language`/`compiler_spec` actually applied — check
+  it to confirm the override took effect (e.g. that a 32-bit spec wasn't auto-upgraded).
+
+If the compiler spec you need is **not listed** by `list_language_ids`, it isn't
+installed yet — see the custom-cspec workflow below.
+
 ## Headless Backend Restart & Custom Compiler Specs (v4.3+)
 
 `restart_headless_server` restarts the headless Ghidra JVM managed by the bridge.
@@ -308,21 +347,24 @@ and refuses to act on a backend it did not launch.
 run_script_inline(code='''
     File dir = new File(System.getProperty("ghidra.home"),
                         "Ghidra/Processors/x86/data/languages");
-    // write custom.cspec, then add a <compiler> entry to the .ldefs
+    // write custom.cspec, then add to the .ldefs in the same dir:
+    //   <compiler name="MyConv" spec="custom.cspec" id="mycspec"/>
 ''')
 
 # 2. Restart so Ghidra re-scans language definitions
 restart_headless_server()
 # -> "Headless server restarted on port 8089; language definitions re-scanned. ..."
 
-# 3. Re-load and apply the new compiler spec
-load_program(file="/path/to/binary.exe")
-run_script_inline(code='''
-    currentProgram.setLanguage(currentProgram.getLanguage(),
-        new ghidra.program.model.lang.CompilerSpecID("mycspec"), false, monitor);
-''')
+# 3. Confirm the new spec is visible, then load with it directly
+list_language_ids(filter="mycspec")   # should now include "mycspec"
+load_program(file="/path/to/binary.exe",
+             language_id="x86:LE:32:default",
+             compiler_spec_id="mycspec")
 run_analysis(program="binary.exe")
 ```
+
+Once the cspec is installed and the backend restarted, `load_program`'s
+`compiler_spec_id` applies it directly — no `setLanguage` scripting required.
 
 **Simpler alternative:** if only one or a few functions deviate from the standard
 convention, skip the custom cspec entirely and set custom variable storage on the

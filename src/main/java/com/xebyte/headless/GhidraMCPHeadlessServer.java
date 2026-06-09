@@ -344,7 +344,14 @@ public class GhidraMCPHeadlessServer implements GhidraLaunchable {
         server.createContext("/load_program", exchange -> {
             Map<String, String> params = parsePostParams(exchange);
             String filePath = params.get("file");
-            sendResponse(exchange, endpointHandler.loadProgram(filePath));
+            String languageId = params.get("language_id");
+            String compilerSpecId = params.get("compiler_spec_id");
+            sendResponse(exchange, endpointHandler.loadProgram(filePath, languageId, compilerSpecId));
+        });
+
+        server.createContext("/list_language_ids", exchange -> {
+            Map<String, String> params = parseQueryParams(exchange);
+            sendResponse(exchange, endpointHandler.listLanguageIds(params.get("filter")));
         });
 
         server.createContext("/close_program", exchange -> {
