@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Ghidra MCP is a production-ready Model Context Protocol (MCP) server that bridges Ghidra's reverse engineering capabilities with AI tools. It provides **193 MCP tools** for binary analysis automation.
+Ghidra MCP is a production-ready Model Context Protocol (MCP) server that bridges Ghidra's reverse engineering capabilities with AI tools. It provides **194 MCP tools** for binary analysis automation.
 
 - **Package**: `com.xebyte`
 - **Version**: 4.3.0 (see `pom.xml`)
@@ -21,7 +21,7 @@ AI/Automation Tools <-> MCP Bridge (bridge_mcp_ghidra.py) <-> Ghidra Plugin (Ghi
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | Ghidra Plugin | `src/main/java/com/xebyte/GhidraMCPPlugin.java` | HTTP server + endpoint wiring, delegates to services |
-| MCP Bridge | `bridge_mcp_ghidra.py` | Dynamic MCP tool registration from `/mcp/schema` + 22 static complex tools |
+| MCP Bridge | `bridge_mcp_ghidra.py` | Dynamic MCP tool registration from `/mcp/schema` + 23 static complex tools |
 | Headless Server | `src/main/java/com/xebyte/headless/` | Standalone server without Ghidra GUI |
 | Service Layer | `src/main/java/com/xebyte/core/` | 12 annotated service classes with `@McpTool`/`@Param` (~15K lines) |
 | Annotation Scanner | `src/main/java/com/xebyte/core/AnnotationScanner.java` | Discovers `@McpTool` methods via reflection, generates `/mcp/schema` |
@@ -97,7 +97,7 @@ ghidra-mcp/
 
 ## Key Documentation
 
-- **API Reference**: See README.md for complete tool listing (193 MCP tools)
+- **API Reference**: See README.md for complete tool listing (194 MCP tools)
 - **Workflow Prompts**: `docs/prompts/FUNCTION_DOC_WORKFLOW_V5.md` - Function documentation workflow (V5)
 - **Batch Processing**: `docs/prompts/FUNCTION_DOC_WORKFLOW_V5_BATCH.md` - Multi-function parallel documentation
 - **Data Analysis**: `docs/prompts/DATA_TYPE_INVESTIGATION_WORKFLOW.md`

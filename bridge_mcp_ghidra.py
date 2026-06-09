@@ -874,6 +874,8 @@ STATIC_TOOL_NAMES = {
     "store_ordinal_mapping",
     "get_ordinal_mapping",
     "export_system_knowledge",
+    # Headless backend lifecycle (bridge-managed subprocess)
+    "restart_headless_server",
 }
 
 # Schema type -> Python type annotation mapping
@@ -2457,6 +2459,9 @@ def export_system_knowledge(
 # ========== HEADLESS SERVER MANAGEMENT ==========
 
 _headless_process = None
+# Startup parameters recorded by main() so restart_headless_server can respawn
+# the backend with the same configuration.
+_headless_config = None
 
 
 def _build_classpath(ghidra_home, mcp_jar):
@@ -2569,6 +2574,66 @@ def _stop_headless_server():
         _headless_process = None
 
 
+def _wait_for_port_free(host, port, timeout=15):
+    """Wait for a TCP port to stop accepting connections."""
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                time.sleep(0.5)
+        except (ConnectionRefusedError, OSError):
+            return True
+    return False
+
+
+@mcp.tool()
+def restart_headless_server(java_opts: str = None) -> str:
+    """
+    Restart the bridge-managed headless Ghidra backend.
+
+    Stops the current headless JVM and spawns a fresh one, which forces
+    Ghidra to re-scan language definitions on startup. Use this after
+    installing a custom compiler spec (.cspec), processor spec (.pspec),
+    or .ldefs entry so the new definitions become available.
+
+    WARNING: all open programs are closed by the restart and unsaved
+    changes are lost. Save first, then re-open or re-import programs
+    after the restart completes.
+
+    Only available when the bridge launched the backend itself
+    (started with --ghidra-home).
+
+    Args:
+        java_opts: Optional JVM options override (e.g. "-Xmx8g").
+            Defaults to the options the server was started with.
+
+    Returns:
+        Status message.
+    """
+    if not _headless_config:
+        return "Error: bridge is not managing a headless server (start the bridge with --ghidra-home)"
+    if _headless_process is None:
+        return "Error: the backend was already running when the bridge started, so it is not bridge-managed — restart it externally"
+    if java_opts:
+        _headless_config["java_opts"] = java_opts
+    port = _headless_config["port"]
+    _stop_headless_server()
+    if not _wait_for_port_free("127.0.0.1", port):
+        return f"Error: port {port} is still in use after stopping the server"
+    try:
+        start_headless_server(
+            ghidra_home=_headless_config["ghidra_home"],
+            port=port,
+            java_opts=_headless_config["java_opts"],
+        )
+    except RuntimeError as e:
+        return f"Error: failed to restart headless server: {e}"
+    return (
+        f"Headless server restarted on port {port}; language definitions re-scanned. "
+        "Re-open or re-import programs before continuing."
+    )
+
+
 # ========== MAIN ==========
 
 
@@ -2604,7 +2669,7 @@ def main():
     )
     args = parser.parse_args()
 
-    global ghidra_server_url
+    global ghidra_server_url, _headless_config
     if args.ghidra_server:
         ghidra_server_url = args.ghidra_server
 
@@ -2612,6 +2677,11 @@ def main():
     if args.ghidra_home:
         parsed = urlparse(ghidra_server_url)
         port = parsed.port or 8089
+        _headless_config = {
+            "ghidra_home": args.ghidra_home,
+            "port": port,
+            "java_opts": args.java_opts,
+        }
         start_headless_server(
             ghidra_home=args.ghidra_home,
             port=port,

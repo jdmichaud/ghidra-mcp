@@ -276,3 +276,54 @@ The hash algorithm normalizes position-dependent values so identical functions a
 | Small immediates (<0x10000) | `IMM:value` | Preserved (constants) |
 | Large immediates | `IMM_LARGE` | May be addresses |
 | Registers | Preserved | Part of algorithm logic |
+
+## Headless Backend Restart & Custom Compiler Specs (v4.3+)
+
+`restart_headless_server` restarts the headless Ghidra JVM managed by the bridge.
+It is only available when the bridge was started with `--ghidra-home` (headless mode)
+and refuses to act on a backend it did not launch.
+
+### When to use it
+
+- **After installing a custom compiler spec** (`.cspec`), processor spec (`.pspec`),
+  or `.ldefs` entry. Ghidra scans language definitions only at JVM startup, so new
+  specs are invisible until a restart.
+- **To change JVM options** mid-session, e.g. more heap for a large binary:
+  `restart_headless_server(java_opts="-Xmx8g")`.
+- **To recover** a wedged backend without killing the whole MCP session.
+
+### What it does NOT do
+
+- It does not work in GUI mode or against an externally started server (it returns
+  an error string instead — restart those manually).
+- It does not preserve open programs: **all open programs are closed and unsaved
+  changes are lost.** Save/export first, then `load_program` + `run_analysis` again
+  after the restart.
+
+### Custom cspec workflow (end to end)
+
+```python
+# 1. Write the spec files into a directory Ghidra scans at startup.
+#    Use run_script_inline so the writes happen on the backend host:
+run_script_inline(code='''
+    File dir = new File(System.getProperty("ghidra.home"),
+                        "Ghidra/Processors/x86/data/languages");
+    // write custom.cspec, then add a <compiler> entry to the .ldefs
+''')
+
+# 2. Restart so Ghidra re-scans language definitions
+restart_headless_server()
+# -> "Headless server restarted on port 8089; language definitions re-scanned. ..."
+
+# 3. Re-load and apply the new compiler spec
+load_program(file="/path/to/binary.exe")
+run_script_inline(code='''
+    currentProgram.setLanguage(currentProgram.getLanguage(),
+        new ghidra.program.model.lang.CompilerSpecID("mycspec"), false, monitor);
+''')
+run_analysis(program="binary.exe")
+```
+
+**Simpler alternative:** if only one or a few functions deviate from the standard
+convention, skip the custom cspec entirely and set custom variable storage on the
+function prototype (`set_function_prototype` with explicit parameter storage).

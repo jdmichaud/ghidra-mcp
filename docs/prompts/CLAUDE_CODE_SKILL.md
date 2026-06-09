@@ -30,6 +30,11 @@ The server is cleaned up automatically on exit.
 
 Optional: `--java-opts "-Xmx8g"` for large binaries.
 
+In this mode the bridge also manages the backend JVM: `restart_headless_server`
+restarts it (all open programs are closed — save/export first, then re-load).
+Use it to pick up newly installed language definitions or to change JVM options
+(`restart_headless_server(java_opts="-Xmx8g")`).
+
 ### GUI Backend (alternative)
 
 If the Ghidra GUI is already running with the MCP plugin and a program loaded in CodeBrowser, the bridge connects to it the same way — no special flags needed.
@@ -111,6 +116,29 @@ mcp__ghidra__get_current_program_info(program="...")
 ```
 mcp__ghidra__save_program(program="...")
 ```
+
+### Custom Compiler Specs (.cspec) — headless mode only
+
+Ghidra only scans language definitions (`.ldefs`/`.cspec`/`.pspec`) at JVM startup,
+so using a custom compiler spec requires a backend restart. Full workflow:
+
+```
+# 1. Write the .cspec into a scanned location and reference it from the .ldefs:
+#    <ghidra_home>/Ghidra/Processors/<P>/data/languages/custom.cspec
+#    Add a <compiler> entry to the .ldefs in the same directory.
+#    Use run_script_inline (Java in the backend JVM) for the file writes.
+
+# 2. Restart the backend so Ghidra re-scans language definitions:
+mcp__ghidra__restart_headless_server()
+
+# 3. Re-load the binary and apply the new language/compiler spec ID:
+mcp__ghidra__load_program(file="/path/to/binary.exe")
+#    Then set the language via run_script_inline:
+#    program.setLanguage(language, new CompilerSpecID("mycspec"), false, monitor)
+```
+
+For a single function with an unusual calling convention, prefer custom variable
+storage on the prototype instead — no cspec or restart needed.
 
 ### Curl Fallback
 

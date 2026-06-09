@@ -4,6 +4,17 @@ Complete version history for the Ghidra MCP Server project.
 
 ---
 
+## Unreleased
+
+### Headless Backend Restart Tool
+
+- New bridge-only MCP tool `restart_headless_server`: restarts the bridge-managed headless Ghidra JVM, forcing a re-scan of language definitions on startup. Enables workflows that install custom compiler specs (`.cspec`), processor specs (`.pspec`), or `.ldefs` entries and then use them without manual intervention. Accepts an optional `java_opts` override (e.g., `-Xmx8g`).
+- Only available when the bridge launched the backend itself (`--ghidra-home`); refuses to touch an externally started server.
+- Bridge records headless startup parameters (`_headless_config`) and waits for the port to free between stop and start to avoid false "already running" detection.
+- Tool count: 193 → 194 (23 static + ~170 dynamic).
+
+---
+
 ## v4.3.0 - 2026-03-09
 
 ### Annotation-Based Endpoints & Dynamic Bridge Registration
